@@ -1,0 +1,64 @@
+# Album cover lights - dashboard card
+# Add via: Edit dashboard -> Add card -> Manual, then paste this.
+# Works in any view. Replace media_player.YOUR_PLAYER with your player.
+type: vertical-stack
+cards:
+  - type: heading
+    heading: Album cover lights
+    icon: mdi:album
+  - type: tile
+    entity: input_boolean.album_cover_lights
+    name: Enabled
+    icon: mdi:album
+    color: purple
+    tap_action:
+      action: toggle
+    icon_tap_action:
+      action: toggle
+    # Only show while music is playing (or while the effect is on)
+    visibility:
+      - condition: or
+        conditions:
+          - condition: state
+            entity: media_player.YOUR_PLAYER
+            state: playing
+          - condition: state
+            entity: input_boolean.album_cover_lights
+            state: "on"
+  - type: tile
+    entity: input_select.album_lights_effect
+    name: Effect
+    features:
+      - type: select-options
+    features_position: bottom
+  - type: tile
+    entity: input_number.album_lights_brightness
+    name: Brightness
+    features:
+      - type: numeric-input
+        style: slider
+    features_position: bottom
+  - type: tile
+    entity: input_number.album_lights_tempo
+    name: Effect speed (seconds)
+    icon: mdi:metronome
+    features:
+      - type: numeric-input
+        style: slider
+    features_position: bottom
+  - type: tile
+    entity: input_number.album_lights_color_cutoff
+    name: Warm-white cut-off
+    icon: mdi:palette-outline
+    features:
+      - type: numeric-input
+        style: slider
+    features_position: bottom
+  - type: tile
+    entity: input_number.album_lights_dark_cover_brightness
+    name: Dark cover brightness
+    icon: mdi:brightness-4
+    features:
+      - type: numeric-input
+        style: slider
+    features_position: bottom

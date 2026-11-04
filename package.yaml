@@ -1,0 +1,643 @@
+# Album cover lights - Home Assistant package
+#
+# Colors two lights from the cover art of the music that is playing.
+# Save as  <config>/packages/album_cover_lights.yaml
+#
+# BEFORE YOU USE IT, find & replace these four placeholders (see README.md):
+#   media_player.YOUR_PLAYER      the media player that exposes cover art
+#   light.YOUR_LIGHT_LEFT         left light / bulb
+#   light.YOUR_LIGHT_RIGHT        right light / bulb
+#   media_player.YOUR_TV          optional: lights stand down while this is on
+#                                 (delete the TV lines if you don't need that)
+
+input_boolean:
+  album_cover_lights:
+    name: Album cover lights
+    icon: mdi:album
+
+input_select:
+  album_lights_effect:
+    name: Album lights effect
+    icon: mdi:auto-fix
+    options:
+      - Static
+      - Breathing
+      - Wave L/R
+      - Color swap
+      - Hue drift
+      - Sparkle
+      - Heartbeat
+
+input_number:
+  album_lights_brightness:
+    name: Album lights brightness
+    icon: mdi:brightness-6
+    min: 10
+    max: 100
+    step: 5
+    unit_of_measurement: "%"
+    mode: slider
+  album_lights_tempo:
+    name: Album lights effect speed
+    icon: mdi:metronome
+    min: 1
+    max: 10
+    step: 0.5
+    unit_of_measurement: s
+    mode: slider
+  album_lights_color_cutoff:
+    name: Album lights warm-white cut-off
+    icon: mdi:palette-outline
+    min: 0
+    max: 40
+    step: 1
+    unit_of_measurement: "%"
+    mode: slider
+  album_lights_dark_cover_brightness:
+    name: Album lights dark cover brightness
+    icon: mdi:brightness-4
+    min: 1
+    max: 30
+    step: 1
+    initial: 5
+    unit_of_measurement: "%"
+    mode: slider
+
+script:
+  album_lights_effect:
+    alias: Album lights - effect
+    description: >-
+      Applies the selected effect and brightness to the two lights, using the
+      hues passed in by the "Album cover colors" automation.
+    icon: mdi:auto-fix
+    mode: restart
+    fields:
+      hue_left:
+        name: Left hue
+        description: Hue of the left light (0-360)
+        selector:
+          number:
+            min: 0
+            max: 360
+      hue_right:
+        name: Right hue
+        description: Hue of the right light (0-360)
+        selector:
+          number:
+            min: 0
+            max: 360
+      saturation:
+        name: Saturation
+        description: Saturation (0-100)
+        selector:
+          number:
+            min: 0
+            max: 100
+      white:
+        name: White
+        description: Cover has no dominant color - use warm white
+        selector:
+          boolean:
+      brightness:
+        name: Brightness override
+        description: Optional brightness (1-100). Used for dark covers instead of the brightness slider.
+        selector:
+          number:
+            min: 1
+            max: 100
+    sequence:
+      - condition: state
+        entity_id: input_boolean.album_cover_lights
+        state: "on"
+      - condition: template
+        value_template: "{{ states.scene.album_lights_before is not none }}"
+      - variables:
+          bri: "{{ (brightness | int(0)) if brightness is defined and brightness | int(0) > 0 else states('input_number.album_lights_brightness') | int(70) }}"
+          bri_low: "{{ [ (bri | int(70) * 0.25) | int, 1 ] | max }}"
+          is_white: "{{ white | default(false) | bool(false) }}"
+          left_hue: "{{ hue_left | default(0) | float(0) }}"
+          right_hue: "{{ hue_right | default(30) | float(30) }}"
+          sat: "{{ saturation | default(75) | float(75) }}"
+          tempo: "{{ states('input_number.album_lights_tempo') | float(4) }}"
+          half: "{{ (states('input_number.album_lights_tempo') | float(4) / 2) | round(1) }}"
+      # Stop any built-in effect the light may be running (e.g. Hue effects)
+      - action: light.turn_on
+        target:
+          entity_id:
+            - light.YOUR_LIGHT_LEFT
+            - light.YOUR_LIGHT_RIGHT
+        data:
+          effect: "off"
+      - choose:
+          # ---------------------------------------------------- Breathing
+          - conditions:
+              - condition: state
+                entity_id: input_select.album_lights_effect
+                state: Breathing
+            sequence:
+              - repeat:
+                  while:
+                    - condition: state
+                      entity_id: input_boolean.album_cover_lights
+                      state: "on"
+                    - condition: state
+                      entity_id: input_select.album_lights_effect
+                      state: Breathing
+                    - condition: template
+                      value_template: "{{ states.scene.album_lights_before is not none }}"
+                  sequence:
+                    - action: light.turn_on
+                      target:
+                        entity_id:
+                          - light.YOUR_LIGHT_LEFT
+                          - light.YOUR_LIGHT_RIGHT
+                      data:
+                        brightness_pct: "{{ bri_low }}"
+                        transition: "{{ half }}"
+                    - delay:
+                        seconds: "{{ half }}"
+                    - action: light.turn_on
+                      target:
+                        entity_id:
+                          - light.YOUR_LIGHT_LEFT
+                          - light.YOUR_LIGHT_RIGHT
+                      data:
+                        brightness_pct: "{{ bri }}"
+                        transition: "{{ half }}"
+                    - delay:
+                        seconds: "{{ half }}"
+          # ---------------------------------------------------- Wave L/R
+          - conditions:
+              - condition: state
+                entity_id: input_select.album_lights_effect
+                state: Wave L/R
+            sequence:
+              - repeat:
+                  while:
+                    - condition: state
+                      entity_id: input_boolean.album_cover_lights
+                      state: "on"
+                    - condition: state
+                      entity_id: input_select.album_lights_effect
+                      state: Wave L/R
+                    - condition: template
+                      value_template: "{{ states.scene.album_lights_before is not none }}"
+                  sequence:
+                    - action: light.turn_on
+                      target:
+                        entity_id: light.YOUR_LIGHT_LEFT
+                      data:
+                        brightness_pct: "{{ bri }}"
+                        transition: "{{ half }}"
+                    - action: light.turn_on
+                      target:
+                        entity_id: light.YOUR_LIGHT_RIGHT
+                      data:
+                        brightness_pct: "{{ bri_low }}"
+                        transition: "{{ half }}"
+                    - delay:
+                        seconds: "{{ half }}"
+                    - action: light.turn_on
+                      target:
+                        entity_id: light.YOUR_LIGHT_LEFT
+                      data:
+                        brightness_pct: "{{ bri_low }}"
+                        transition: "{{ half }}"
+                    - action: light.turn_on
+                      target:
+                        entity_id: light.YOUR_LIGHT_RIGHT
+                      data:
+                        brightness_pct: "{{ bri }}"
+                        transition: "{{ half }}"
+                    - delay:
+                        seconds: "{{ half }}"
+          # ---------------------------------------------------- Color swap
+          - conditions:
+              - condition: state
+                entity_id: input_select.album_lights_effect
+                state: Color swap
+              - condition: template
+                value_template: "{{ not is_white }}"
+            sequence:
+              - repeat:
+                  while:
+                    - condition: state
+                      entity_id: input_boolean.album_cover_lights
+                      state: "on"
+                    - condition: state
+                      entity_id: input_select.album_lights_effect
+                      state: Color swap
+                    - condition: template
+                      value_template: "{{ states.scene.album_lights_before is not none }}"
+                  sequence:
+                    - action: light.turn_on
+                      target:
+                        entity_id: light.YOUR_LIGHT_LEFT
+                      data:
+                        brightness_pct: "{{ bri }}"
+                        hs_color: ["{{ right_hue }}", "{{ sat }}"]
+                        transition: "{{ half }}"
+                    - action: light.turn_on
+                      target:
+                        entity_id: light.YOUR_LIGHT_RIGHT
+                      data:
+                        brightness_pct: "{{ bri }}"
+                        hs_color: ["{{ left_hue }}", "{{ sat }}"]
+                        transition: "{{ half }}"
+                    - delay:
+                        seconds: "{{ half }}"
+                    - action: light.turn_on
+                      target:
+                        entity_id: light.YOUR_LIGHT_LEFT
+                      data:
+                        brightness_pct: "{{ bri }}"
+                        hs_color: ["{{ left_hue }}", "{{ sat }}"]
+                        transition: "{{ half }}"
+                    - action: light.turn_on
+                      target:
+                        entity_id: light.YOUR_LIGHT_RIGHT
+                      data:
+                        brightness_pct: "{{ bri }}"
+                        hs_color: ["{{ right_hue }}", "{{ sat }}"]
+                        transition: "{{ half }}"
+                    - delay:
+                        seconds: "{{ half }}"
+          # ---------------------------------------------------- Hue drift
+          - conditions:
+              - condition: state
+                entity_id: input_select.album_lights_effect
+                state: Hue drift
+              - condition: template
+                value_template: "{{ not is_white }}"
+            sequence:
+              - repeat:
+                  while:
+                    - condition: state
+                      entity_id: input_boolean.album_cover_lights
+                      state: "on"
+                    - condition: state
+                      entity_id: input_select.album_lights_effect
+                      state: Hue drift
+                    - condition: template
+                      value_template: "{{ states.scene.album_lights_before is not none }}"
+                  sequence:
+                    - action: light.turn_on
+                      target:
+                        entity_id: light.YOUR_LIGHT_LEFT
+                      data:
+                        brightness_pct: "{{ bri }}"
+                        hs_color: ["{{ (left_hue + 25) % 360 }}", "{{ sat }}"]
+                        transition: "{{ tempo }}"
+                    - action: light.turn_on
+                      target:
+                        entity_id: light.YOUR_LIGHT_RIGHT
+                      data:
+                        brightness_pct: "{{ bri }}"
+                        hs_color: ["{{ (right_hue - 25 + 360) % 360 }}", "{{ sat }}"]
+                        transition: "{{ tempo }}"
+                    - delay:
+                        seconds: "{{ tempo }}"
+                    - action: light.turn_on
+                      target:
+                        entity_id: light.YOUR_LIGHT_LEFT
+                      data:
+                        brightness_pct: "{{ bri }}"
+                        hs_color: ["{{ (left_hue - 25 + 360) % 360 }}", "{{ sat }}"]
+                        transition: "{{ tempo }}"
+                    - action: light.turn_on
+                      target:
+                        entity_id: light.YOUR_LIGHT_RIGHT
+                      data:
+                        brightness_pct: "{{ bri }}"
+                        hs_color: ["{{ (right_hue + 25) % 360 }}", "{{ sat }}"]
+                        transition: "{{ tempo }}"
+                    - delay:
+                        seconds: "{{ tempo }}"
+          # ---------------------------------------------------- Sparkle
+          - conditions:
+              - condition: state
+                entity_id: input_select.album_lights_effect
+                state: Sparkle
+            sequence:
+              - repeat:
+                  while:
+                    - condition: state
+                      entity_id: input_boolean.album_cover_lights
+                      state: "on"
+                    - condition: state
+                      entity_id: input_select.album_lights_effect
+                      state: Sparkle
+                    - condition: template
+                      value_template: "{{ states.scene.album_lights_before is not none }}"
+                  sequence:
+                    - variables:
+                        bulb: "{{ ['light.YOUR_LIGHT_LEFT', 'light.YOUR_LIGHT_RIGHT'] | random }}"
+                    - action: light.turn_on
+                      target:
+                        entity_id: "{{ bulb }}"
+                      data:
+                        brightness_pct: 100
+                        transition: 0.2
+                    - delay:
+                        milliseconds: 300
+                    - action: light.turn_on
+                      target:
+                        entity_id: "{{ bulb }}"
+                      data:
+                        brightness_pct: "{{ bri }}"
+                        transition: 0.6
+                    - delay:
+                        milliseconds: "{{ (range(30, 100) | random / 100 * tempo * 1000) | int + 600 }}"
+          # ---------------------------------------------------- Heartbeat
+          - conditions:
+              - condition: state
+                entity_id: input_select.album_lights_effect
+                state: Heartbeat
+            sequence:
+              - repeat:
+                  while:
+                    - condition: state
+                      entity_id: input_boolean.album_cover_lights
+                      state: "on"
+                    - condition: state
+                      entity_id: input_select.album_lights_effect
+                      state: Heartbeat
+                    - condition: template
+                      value_template: "{{ states.scene.album_lights_before is not none }}"
+                  sequence:
+                    - action: light.turn_on
+                      target:
+                        entity_id:
+                          - light.YOUR_LIGHT_LEFT
+                          - light.YOUR_LIGHT_RIGHT
+                      data:
+                        brightness_pct: 100
+                        transition: 0.1
+                    - delay:
+                        milliseconds: 200
+                    - action: light.turn_on
+                      target:
+                        entity_id:
+                          - light.YOUR_LIGHT_LEFT
+                          - light.YOUR_LIGHT_RIGHT
+                      data:
+                        brightness_pct: "{{ bri_low }}"
+                        transition: 0.15
+                    - delay:
+                        milliseconds: 200
+                    - action: light.turn_on
+                      target:
+                        entity_id:
+                          - light.YOUR_LIGHT_LEFT
+                          - light.YOUR_LIGHT_RIGHT
+                      data:
+                        brightness_pct: 100
+                        transition: 0.1
+                    - delay:
+                        milliseconds: 200
+                    - action: light.turn_on
+                      target:
+                        entity_id:
+                          - light.YOUR_LIGHT_LEFT
+                          - light.YOUR_LIGHT_RIGHT
+                      data:
+                        brightness_pct: "{{ bri_low }}"
+                        transition: 0.4
+                    - delay:
+                        milliseconds: "{{ ([tempo - 0.6, 0.4] | max * 1000) | int }}"
+        # -------------------------------------------------------- Static
+        default:
+          - action: light.turn_on
+            target:
+              entity_id:
+                - light.YOUR_LIGHT_LEFT
+                - light.YOUR_LIGHT_RIGHT
+            data:
+              brightness_pct: "{{ bri }}"
+              transition: 1
+
+automation:
+  - id: album_cover_colors_hue_behind_tv
+    alias: Album cover colors -> lights
+    description: >-
+      While music is playing and the switch "Album cover lights" is on, sets
+      the two lights to colors from the album cover (right light: hue +30),
+      using the brightness and effect chosen on the dashboard. Covers that are
+      nearly neutral (saturation below the "warm-white cut-off" slider, or
+      very dark and low-saturation) get warm white. Turning the switch off, or music
+      stopping for 1 minute, restores the previous light state.
+    mode: queued
+    max: 10
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.album_cover_lights
+        to: "on"
+        id: start_manual
+      - trigger: state
+        entity_id: media_player.YOUR_PLAYER
+        to: playing
+        id: start
+      - trigger: state
+        entity_id: media_player.YOUR_PLAYER
+        attribute: entity_picture
+        id: start
+      - trigger: state
+        entity_id: input_boolean.album_cover_lights
+        to: "off"
+        id: stop_manual
+      - trigger: state
+        entity_id: media_player.YOUR_PLAYER
+        from: playing
+        for:
+          minutes: 1
+        id: end_music
+      - trigger: state
+        entity_id: media_player.YOUR_TV
+        to: "on"
+        id: end_tv
+      - trigger: state
+        entity_id:
+          - input_select.album_lights_effect
+          - input_number.album_lights_brightness
+          - input_number.album_lights_tempo
+          - input_number.album_lights_color_cutoff
+          - input_number.album_lights_dark_cover_brightness
+        id: start
+    actions:
+      - choose:
+          # ---------------- Switch turned off: stop effect, restore lights
+          - conditions:
+              - condition: trigger
+                id: stop_manual
+            sequence:
+              - action: script.turn_off
+                target:
+                  entity_id: script.album_lights_effect
+              - if:
+                  - condition: template
+                    value_template: "{{ states.scene.album_lights_before is not none }}"
+                then:
+                  - action: light.turn_on
+                    data:
+                      effect: "off"
+                    target:
+                      entity_id:
+                        - light.YOUR_LIGHT_LEFT
+                        - light.YOUR_LIGHT_RIGHT
+                  - action: scene.turn_on
+                    target:
+                      entity_id: scene.album_lights_before
+                    data:
+                      transition: 2
+                  - delay:
+                      seconds: 3
+                  - action: scene.delete
+                    target:
+                      entity_id: scene.album_lights_before
+          # ---------------- Music stopped for a minute: switch off
+          - conditions:
+              - condition: trigger
+                id: end_music
+              - condition: state
+                entity_id: input_boolean.album_cover_lights
+                state: "on"
+            sequence:
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: input_boolean.album_cover_lights
+          # ---------------- TV turned on: stand down
+          - conditions:
+              - condition: trigger
+                id: end_tv
+              - condition: state
+                entity_id: input_boolean.album_cover_lights
+                state: "on"
+            sequence:
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: input_boolean.album_cover_lights
+          # ---------------- Start / track change / setting changed
+          - conditions:
+              - condition: trigger
+                id:
+                  - start
+                  - start_manual
+              - condition: state
+                entity_id: input_boolean.album_cover_lights
+                state: "on"
+              - condition: state
+                entity_id: media_player.YOUR_PLAYER
+                state: playing
+              - condition: not
+                conditions:
+                  - condition: state
+                    entity_id: media_player.YOUR_TV
+                    state: "on"
+              - condition: template
+                value_template: "{{ state_attr('media_player.YOUR_PLAYER', 'entity_picture') is not none }}"
+            sequence:
+              - action: script.turn_off
+                target:
+                  entity_id: script.album_lights_effect
+              # Remember how the lights were, once per session
+              - if:
+                  - condition: template
+                    value_template: "{{ states.scene.album_lights_before is none }}"
+                then:
+                  - action: scene.create
+                    data:
+                      scene_id: album_lights_before
+                      snapshot_entities:
+                        - light.YOUR_LIGHT_LEFT
+                        - light.YOUR_LIGHT_RIGHT
+              # On a manual start show warm white right away, until the color arrives
+              - if:
+                  - condition: trigger
+                    id: start_manual
+                then:
+                  - action: light.turn_on
+                    target:
+                      entity_id:
+                        - light.YOUR_LIGHT_LEFT
+                        - light.YOUR_LIGHT_RIGHT
+                    data:
+                      brightness_pct: "{{ states('input_number.album_lights_brightness') | int(70) }}"
+                      color_temp_kelvin: 2700
+                      transition: 0.5
+              # Dominant color of the cover art (needs the color_extractor integration)
+              - action: color_extractor.get_color
+                data:
+                  color_extract_url: "http://127.0.0.1:8123{{ state_attr('media_player.YOUR_PLAYER', 'entity_picture') }}"
+                response_variable: cover
+              - variables:
+                  hue: >-
+                    {% set r = cover.color[0] / 255 %}{% set g = cover.color[1] / 255 %}{% set b = cover.color[2] / 255 %}
+                    {% set mx = [r, g, b] | max %}{% set mn = [r, g, b] | min %}{% set d = mx - mn %}
+                    {% if d == 0 %}0
+                    {% elif mx == r %}{{ ((60 * ((g - b) / d) + 360) % 360) | round(0) }}
+                    {% elif mx == g %}{{ (60 * ((b - r) / d) + 120) | round(0) }}
+                    {% else %}{{ (60 * ((r - g) / d) + 240) | round(0) }}{% endif %}
+                  sat: >-
+                    {% set mx = cover.color | max %}{% set mn = cover.color | min %}
+                    {{ 0 if mx == 0 else ((mx - mn) / mx * 100) | round(0) }}
+                  val: "{{ ((cover.color | max) / 255 * 100) | round(0) }}"
+                  bri: "{{ states('input_number.album_lights_brightness') | int(70) }}"
+                  cutoff: "{{ states('input_number.album_lights_color_cutoff') | float(10) }}"
+                  dark: "{{ val | float(0) < 12 and sat | float(0) < 40 }}"
+                  dark_bri: "{{ states('input_number.album_lights_dark_cover_brightness') | int(5) }}"
+                  neutral: "{{ sat | float(0) < cutoff | float(10) or dark }}"
+              - if:
+                  - condition: template
+                    value_template: "{{ neutral }}"
+                then:
+                  - if:
+                      - condition: template
+                        value_template: "{{ dark }}"
+                    then:
+                      # Very dark gray/black cover: dim glow instead of warm white
+                      - action: light.turn_on
+                        target:
+                          entity_id:
+                            - light.YOUR_LIGHT_LEFT
+                            - light.YOUR_LIGHT_RIGHT
+                        data:
+                          brightness_pct: "{{ dark_bri }}"
+                          color_temp_kelvin: 2200
+                          transition: 3
+                    else:
+                      - action: light.turn_on
+                        target:
+                          entity_id:
+                            - light.YOUR_LIGHT_LEFT
+                            - light.YOUR_LIGHT_RIGHT
+                        data:
+                          brightness_pct: "{{ bri }}"
+                          color_temp_kelvin: 2700
+                          transition: 2
+                else:
+                  - action: light.turn_on
+                    target:
+                      entity_id: light.YOUR_LIGHT_LEFT
+                    data:
+                      brightness_pct: "{{ bri }}"
+                      hs_color: ["{{ hue | float(0) }}", "{{ [sat | float(0), 75] | max }}"]
+                      transition: 2
+                  - action: light.turn_on
+                    target:
+                      entity_id: light.YOUR_LIGHT_RIGHT
+                    data:
+                      brightness_pct: "{{ bri }}"
+                      hs_color: ["{{ (hue | float(0) + 30) % 360 }}", "{{ [sat | float(0), 75] | max }}"]
+                      transition: 2
+              - delay:
+                  seconds: 2
+              - action: script.turn_on
+                target:
+                  entity_id: script.album_lights_effect
+                data:
+                  variables:
+                    hue_left: "{{ hue | float(0) }}"
+                    hue_right: "{{ (hue | float(0) + 30) % 360 }}"
+                    saturation: "{{ [sat | float(0), 75] | max }}"
+                    white: "{{ neutral }}"
+                    brightness: "{{ dark_bri if dark else 0 }}"
